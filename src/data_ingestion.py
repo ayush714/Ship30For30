@@ -1,3 +1,6 @@
+from urllib import request
+import requests
+from os.path import join as pjoin
 import numpy as np
 import pandas as pd
 import tweepy
@@ -54,7 +57,10 @@ class DataIngestion:
             retweetcount = []
             text = []
             likes = []
-            links = []
+            links = [] 
+            media = {}   
+            medias = [] 
+            medialinks = [] 
             tweets = tweepy.Cursor(api.search_tweets, q=words, tweet_mode = "extended").items(number_of_tweets)
             list_tweets = [tweet for tweet in tweets]
 
@@ -64,7 +70,10 @@ class DataIngestion:
                 username.append(tweet.user.screen_name)
                 location.append(tweet.user.location)
                 likes.append(tweet.favorite_count)  
-                text.append(tweet.full_text)
+                text.append(tweet.full_text)  
+                medias.append(tweet.entities.get('media',[])) 
+                medialinks.append(tweet.entities.get('urls',[])) 
+
                 # if 'retweeted_status' in dir(tweet):  
                 #     retweetcount.append(tweet.retweeted_status.full_text)   
                 # else:  
@@ -78,25 +87,42 @@ class DataIngestion:
             # df["retweetcount"] = retweetcount
             df["text"] = text
             df["likes"] = likes
-            df["links"] = links
-            return df  
+            df["links"] = links 
+            df["medias"] = medias 
+            df["medialinks"] = medialinks 
+
+            return df 
         except Exception as e: 
             self.logger.log(self.file_obj, "Tweets are not collected successfully")
             self.logger.log(self.file_obj, str(e))
             raise e 
 
-        
+
+def extract_image_from_url(url,image_id,data_dir):
+    image_extension = url.split('.')[-1].lower()
+    assert image_extension in {'png','jpeg','jpg'}, f"Got wrong image format for extension {image_extension}, url {url}"
+    r = requests.get(url,stream=True)
+    filename = f"image-{image_id}"
+    fullpath = pjoin(data_dir,filename)
+    fullpath_with_ext = f"{fullpath}.{image_extension}"
+    with open(fullpath_with_ext,"wb") as f:
+        f.write(r.content)
+    print(f'saved {url} to {fullpath_with_ext}')
+
+
+def extract_image_from_row(row,data_dir='images\\scraped'):
+    medias = row['medias']
+    for media in medias:
+        url = media['media_url']
+        image_id = media['id_str']
+        extract_image_from_url(url,image_id,data_dir)
 
 if __name__ == "__main__":
-    # DataIngestions = DataIngestion()
-    # words = "#Ship30For30"
-    # date_since = "2021-12-01"
-    # date_until = "2022-01-05"
-    # api = DataIngestions.authenticate_tweepy()
-    # df  = DataIngestions.search_by_hashtag(api, words) 
-    pass 
-# following = tweet.user.friends_count
-#             followers = tweet.user.followers_count
-#             totaltweets = tweet.user.statuses_count
-#             retweetcount = tweet.retweet_count
-
+    DataIngestions = DataIngestion()
+    words = "#Ship30For30"
+    date_since = "2021-12-01"
+    date_until = "2022-01-05"
+    api = DataIngestions.authenticate_tweepy()
+    df = DataIngestions.search_by_hashtag(api, words, 10)  
+    [extract_image_from_row(row) for _, row in df.iterrows()]   
+    
